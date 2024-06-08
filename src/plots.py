@@ -1,4 +1,5 @@
 import os
+import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
@@ -61,13 +62,13 @@ class IPlot:
     
     def standard_deviation(self, benchmark=True, show=False):
         """Plot the standard deviation of the returns of the stocks."""
-        std_rets = self.stocks.pct_change().std() * (252 ** 0.5)
+        std_rets = self.stocks.pct_change().std() * np.sqrt(252)
         std_rets.sort_values(ascending=False, inplace=True)
         std_rets.plot(kind="bar", figsize=(15, 10), title="Standard Deviation of Returns")
 
         # Plot the benchmark
         if benchmark:
-            std_benchmark = self.benchmark.pct_change().std() * (252 ** 0.5)
+            std_benchmark = self.benchmark.pct_change().std() * np.sqrt(252)
             plt.axhline(y=std_benchmark, color="red", linestyle="--", label="Benchmark")
         
         if show:
@@ -76,3 +77,27 @@ class IPlot:
         plt.savefig(f"{PLOTS}/std_returns.png", dpi=300)
         plt.clf()
         
+    def correlation(self, show=False):
+        """Plot the correlation matrix of the stocks."""
+        corr = self.stocks.corr()
+        plt.figure(figsize=(15, 10))
+        plt.matshow(corr, fignum=1)
+        plt.xticks(range(len(corr.columns)), corr.columns, rotation=90)
+        plt.yticks(range(len(corr.columns)), corr.columns)
+        plt.colorbar()
+        
+        if show:
+            plt.show()
+        plt.savefig(f"{PLOTS}/correlation.png", dpi=300)
+        plt.clf()
+    
+    def sharpe_ratio(self, risk_free_rate=0.0, show=False):
+        """Plot the Sharpe ratio of the stocks."""
+        sharpe = (self.stocks.pct_change().mean() - risk_free_rate) / (self.stocks.pct_change().std() * np.sqrt(252))
+        sharpe.sort_values(ascending=False, inplace=True)
+        sharpe.plot(kind="bar", figsize=(15, 10), title="Sharpe Ratio")
+        
+        if show:
+            plt.show()
+        plt.savefig(f"{PLOTS}/sharpe_ratio.png", dpi=300)
+        plt.clf()
