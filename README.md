@@ -4,6 +4,8 @@ The field of finance has seen various investment strategies, each with its uniqu
 
 Value investing is a well-established investment philosophy that identifies undervalued assets in the financial markets. The fundamental principle underlying value investing is to buy assets at a significant discount to their intrinsic value, thus providing a safety margin for investors. This safety margin protects against market volatility and economic downturns, making value investing an attractive approach for risk-averse investors.
 
+https://www.six-group.com/dam/download/market-data/indices/equity-indices/six-methodology-smi-equity-and-re-en.pdf
+
 <br />
 
 ## Objectives

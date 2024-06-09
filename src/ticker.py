@@ -1,4 +1,5 @@
 import os
+import json
 import pandas as pd
 from datetime import datetime, timedelta
 from yfinance import Ticker
@@ -38,3 +39,9 @@ class ITicker(Ticker):
         serie = df["Close"]
         serie.name = self.ticker
         return serie
+    
+if __name__ == "__main__":
+    t = ITicker("AAPL")
+    print(json.dumps(t.info, indent=4))
+    # print(t.get_close())
+    # print(t.get_data())

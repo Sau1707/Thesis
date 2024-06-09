@@ -8,7 +8,6 @@ from scipy.optimize import minimize
 
 
 
-
 class IOptimizer:
     def __init__(self, stocks: pd.DataFrame, smi: pd.DataFrame, risk_free_rate: float = 0.03):
         self.stocks = stocks
