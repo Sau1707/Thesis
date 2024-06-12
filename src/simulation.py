@@ -1,3 +1,4 @@
+import tqdm
 import pandas as pd
 import matplotlib.pyplot as plt
 
@@ -22,7 +23,11 @@ class Simulation:
         assert date < self.end, "The event is after the end date"
         self.events[date] = event
 
-    def run(self, weights: pd.DataFrame, start_date: pd.Timestamp, end_date: pd.Timestamp):
+    def get_stocks(self, date: pd.Timestamp):
+        """Return the stocks data, without the future data and the missing data"""
+        return self.stocks.loc[:date].dropna(axis=1, how='all')
+
+    def run(self, weights: pd.DataFrame, *, start_date: pd.Timestamp, end_date: pd.Timestamp):
         """Simulate the portfolio over time"""
         assert start_date >= self.start, "The start date is before the simulation start date"
         assert end_date <= self.end, "The end date is after the simulation end date"
@@ -40,24 +45,31 @@ class Simulation:
 
         # Create the portfolio, where the column is the total return
         portfolios = pd.DataFrame(index=stocks.index, columns=weights.columns)
+        previous_date = start_date
+        for date, event in tqdm.tqdm(events.items(), desc="Running simulation"):
+            # Get the historical data of the stocks for this period
+            historical_stocks = self.get_stocks(date)
 
-        for date, event in events.items():
-            # When an event is triggered, get the new weights using the historical data
-            if event is not None:
-                historical_stocks = self.stocks.loc[:date]
-                weights = event(historical_stocks)
-
-            # Get the returns of the stocks in the period
-            returns = stocks.loc[:date].pct_change()
-            total_returns = (1 + returns).cumprod()
+            # Get the returns of the stocks in the period and filter out the stocks that are not in the portfolio
+            historical_stocks = historical_stocks.ffill()
+            returns = historical_stocks.pct_change()
+            returns = returns[weights.index]
 
             # Save the total return of the portfolio
             for portfolio in weights.columns:
-                portfolios.loc[:date, portfolio] = (total_returns @ weights[portfolio])
+                portfolios.loc[previous_date:date, portfolio] = (returns @ weights[portfolio])
+            previous_date = date
+
+            # The weights of the portfolio can be updated by the event
+            if event is not None:
+                weights = event(historical_stocks, weights)
 
         # Calculate the returns of the benchmark
         bm_returns = benchmark.pct_change()
         bm_returns = (1 + bm_returns).cumprod()
+
+        # Calculate the returns of the portfolios
+        portfolios = (1 + portfolios).cumprod()
 
         return bm_returns, portfolios
     

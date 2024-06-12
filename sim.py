@@ -9,19 +9,30 @@ from scipy.optimize import minimize
 from src.simulation import Simulation
 
 
-if __name__ == "__main__":
-    bm, stocks = get_data(tickers=TICKERS_SW, benchmark=SMI, start_year=2000, end_year=2024, normalize=True)
+def event(historical_stocks: pd.DataFrame, current_weights: pd.DataFrame):
+    """Event that rebalances the portfolio"""
+    n = len(historical_stocks.columns)
+    df = pd.DataFrame(np.random.dirichlet(np.ones(n), size=2).T, index=historical_stocks.columns, columns=['Portfolio 1', 'Portfolio 2'])
+    df["Portfolio 2"] = current_weights["Portfolio 2"]
+    df["Portfolio 2"] = df["Portfolio 2"].fillna(0)
+    return df
 
+
+if __name__ == "__main__":
+    bm, stocks = get_data(tickers=TICKERS_SW, benchmark=SMI)
     # Create the simulation
     sim = Simulation(bm, stocks)
+    stocks = sim.get_stocks(pd.Timestamp("2000-01-01"))
+    start_date = pd.Timestamp("2000-01-01")
+    end_date = pd.Timestamp("2024-01-01")
 
-    # Add an event
-    sim.add_event(pd.Timestamp("2020-06-06"), lambda x: pd.DataFrame(np.ones((len(x.columns), 2)) / len(x.columns), index=x.columns, columns=['Portfolio 1', 'Portfolio 2']))
-    sim.add_event(pd.Timestamp("2020-12-06"), lambda x: pd.DataFrame(np.random.dirichlet(np.ones(len(x.columns)), size=2).T, index=x.columns, columns=['Portfolio 1', 'Portfolio 2']))
+    # Add an event every 6 months
+    # for date in pd.date_range(start_date, end_date, freq='3YE'):
+    #     sim.add_event(date, event)
 
     # Run the simulation
-    initial_weights = pd.DataFrame(np.random.dirichlet(np.ones(len(stocks.columns)), size=2).T, index=stocks.columns, columns=['Portfolio 1', 'Portfolio 2'])
-    bm_returns, portfolio_values = sim.run(initial_weights, pd.Timestamp("2020-01-01"), pd.Timestamp("2021-01-01"))
+    portfolios_names = ['Portfolio 1', 'Portfolio 2']
+    initial_weights = pd.DataFrame(np.random.dirichlet(np.ones(len(stocks.columns)), size=2).T, index=stocks.columns, columns=portfolios_names)
+    bm_returns, portfolio_values = sim.run(initial_weights, start_date=start_date, end_date=end_date)
 
-    print(portfolio_values)
     sim.plot(bm_returns, portfolio_values)
