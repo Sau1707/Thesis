@@ -1,48 +1,64 @@
+import os
+import pickle
+import hashlib
 import pandas as pd
 from tqdm import tqdm
 from src.ticker import ITicker
-from src.constants import SMI, TICKERS
 
+
+def generate_hash(tickers, benchmark, start_year, end_year, normalize):
+    hash_input = ''.join(tickers) + benchmark + str(start_year) + str(end_year) + str(normalize)
+    return hashlib.md5(hash_input.encode()).hexdigest()
+
+
+def save_data_to_file(data, filename):
+    with open(filename, 'wb') as f:
+        pickle.dump(data, f)
+
+
+def load_data_from_file(filename):
+    with open(filename, 'rb') as f:
+        return pickle.load(f)
 
 
 def get_data(tickers: list[str], benchmark: str, start_year=2000, end_year=2200, normalize=False):
     """Return the closing prices of the SMI and the stocks in TICKERS as a pandas DataFrame."""
     
-    # Try to open the data from the file and check if all the tickers are in the data and the range is correct
-    try:
-        df = pd.read_csv("data/stocks.csv", index_col=0, parse_dates=True)
-        #  TODO: fix this 
-        assert benchmark in df.columns, "The benchmark is not in the data"
-        assert df.index[0].year <= start_year, "The start year is not in the data"
-        assert df.index[-1].year >= end_year, "The end year is not in the data"
-    except Exception as e:  
-        print(f"Error reading data: {e}")
-        dfs = []
+    # Ensure the cache directory exists
+    os.makedirs('data/cache', exist_ok=True)
+    
+    # Generate the filename based on the hash
+    data_hash = generate_hash(tickers, benchmark, start_year, end_year, normalize)
+    filename = os.path.join('data/cache', f"{data_hash}.pkl")
 
-        bm = ITicker(benchmark)
-        bm = bm.get_close()
-        dfs.append(bm)
+    # Try to load the data from the file
+    if os.path.exists(filename):
+        return load_data_from_file(filename)
+    
+    # If file doesn't exist, fetch the data
+    dfs = []
 
-        for ticker in tqdm(tickers, desc="Downloading data"):
-            try:
-                t = ITicker(ticker)
-                df = t.get_close()
+    bm = ITicker(benchmark)
+    bm = bm.get_close()
+    dfs.append(bm)
 
-                # Check that the start year is in the data
-                if df.index[0].year > start_year:
-                    continue
-                
-                dfs.append(df)
-            except Exception as e:
-                print(f"Error downloading {ticker}: {e}")
+    for ticker in tqdm(tickers, desc="Downloading data"):
+        try:
+            t = ITicker(ticker)
+            df = t.get_close()
 
-        df = pd.concat(dfs, axis=1)
-        df = df.dropna()
-        df.index = pd.to_datetime(df.index)
-        df.to_csv("data/stocks.csv")
+            # Check that the start year is in the data
+            if df.index[0].year > start_year:
+                continue
+            
+            dfs.append(df)
+        except Exception as e:
+            print(f"Error downloading {ticker}: {e}")
 
-        
-        
+    df = pd.concat(dfs, axis=1)
+    df = df.dropna()
+    df.index = pd.to_datetime(df.index)
+
     # Remove the years that are not in the range
     df = df.loc[f"{start_year}":f"{end_year}"]
 
@@ -54,4 +70,9 @@ def get_data(tickers: list[str], benchmark: str, start_year=2000, end_year=2200,
     bm = df.pop(benchmark)
     bm.name = benchmark
 
-    return bm, df
+    result = (bm, df)
+
+    # Save the data to file
+    save_data_to_file(result, filename)
+
+    return result
