@@ -21,7 +21,7 @@ def load_data_from_file(filename):
         return pickle.load(f)
 
 
-def get_data(tickers: list[str], benchmark: str):
+def get_data(tickers: list[str], benchmark: str) -> tuple[pd.Series, pd.DataFrame]:
     """Return the closing prices of the SMI and the stocks in TICKERS as a pandas DataFrame."""
     # Ensure the cache directory exists
     os.makedirs('data/cache', exist_ok=True)
@@ -58,7 +58,7 @@ def get_data(tickers: list[str], benchmark: str):
     
     # Fill the missing data in the benchmark with the previous value
     bm = bm.fillna(method='ffill')
-    result = (bm, df)
+    result = (bm, df)   
 
     # Save the data to file
     save_data_to_file(result, filename)
