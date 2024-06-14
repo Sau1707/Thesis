@@ -76,6 +76,8 @@ class Simulation:
     def plot(self, benchmark: pd.Series, portfolios: pd.DataFrame):
         """Plot the returns of the portfolio"""
         # Plot vertical lines for the events
+        plt.figure(figsize=(12, 8))
+        
         for i, date in enumerate(self.events.keys()):
             if i == 0:
                 plt.axvline(date, color="red", linestyle="--", label="Event")
@@ -88,7 +90,13 @@ class Simulation:
 
         # Plot the returns of the benchmark
         plt.plot(benchmark, label="Benchmark")
-
+        plt.xlabel("Date")
+        plt.ylabel("Returns")
         plt.legend()
-        plt.show()
-   
+    
+    def plot_sharp_ratio(self):
+        """https://www.investopedia.com/terms/s/sharperatio.asp"""
+
+    def plot_number_of_positions(self):
+        """Plot the number of positions in the portfolio"""
+        # https://gurobi-finance.readthedocs.io/en/latest/modeling_notebooks/basic_model_maxmu.html

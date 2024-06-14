@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from src.constants import SMI, TICKERS, TICKERS_SW
+from src.constants import SMI, TICKERS_SW
 from src.utils import get_data
 from scipy.optimize import Bounds
 from scipy.optimize import LinearConstraint, NonlinearConstraint
@@ -61,8 +61,18 @@ class EfficientFrontier:
 
         # Normalize the weights to sum to 1
         weights = res.x / sum(res.x)
+
+        # Print the total non zero weights
+        print(len(weights))
+        print(len(weights[weights > 0.001]))
         frontier_return = (weights * self.stocks_returns).sum(axis=1)
         return frontier_return
+    
+    def mean_ENC_portfolio(self):
+        """Calculate the efficient frontier of the portfolio
+        Using:
+        
+        """
     
 
 
@@ -72,24 +82,19 @@ bm = bm.loc["2000":]
 
 ef = EfficientFrontier(stocks, bm)
 portfolio_returns = ef.random_portfolios(100)
-frontier_return_0 = ef.mean_variance_portfolio(0.0)
-frontier_return_1 = ef.mean_variance_portfolio(0.1)
-frontier_return_2 = ef.mean_variance_portfolio(0.2)
-frontier_return_3 = ef.mean_variance_portfolio(0.3)
-frontier_return_4 = ef.mean_variance_portfolio(0.4)
-frontier_return_5 = ef.mean_variance_portfolio(0.5)
-frontier_return_6 = ef.mean_variance_portfolio(0.6)
+# for i in range(100):
+#     ef.mean_variance_portfolio(i/100)
+
+frontier_return_0 = ef.mean_variance_portfolio(0.05)
+
+# TODO: plot the number of positions
+
 bm_returns = ef.get_benchmark_returns()
+
 
 # Plot the returns
 plt.plot(portfolio_returns, alpha=0.1)
 plt.plot(frontier_return_0, color='red', label='Frontier 0')
-plt.plot(frontier_return_1, color='blue', label='Frontier 0.1')
-plt.plot(frontier_return_2, color='black', label='Frontier 0.2')
-plt.plot(frontier_return_3, color='yellow', label='Frontier 0.3')
-plt.plot(frontier_return_4, color='purple', label='Frontier 0.4')
-plt.plot(frontier_return_5, color='orange', label='Frontier 0.5')
-plt.plot(frontier_return_6, color='brown', label='Frontier 0.6')
 plt.plot(bm_returns, color='green', label='Benchmark')
 plt.legend()
 plt.show()
