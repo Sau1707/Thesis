@@ -7,6 +7,7 @@ from src.utils import get_data
 from src.simulation import Simulation
 from src.frontier import Frontier
 
+np.random.seed(0)
 
 # Set up argument parser
 parser = argparse.ArgumentParser(description="Generate a plot with specified years and variance.")

@@ -5,6 +5,9 @@ import matplotlib.pyplot as plt
 
 class Simulation:
     """Simulate the portfolio over time"""
+    # TODO: remove benchmark?
+    # TODO: number of positions
+    # TODO: sharp ratio
 
     def __init__(self, benchmark: pd.Series, stocks: pd.DataFrame): 
         self.benchmark = benchmark
@@ -77,7 +80,7 @@ class Simulation:
         """Plot the returns of the portfolio"""
         # Plot vertical lines for the events
         plt.figure(figsize=(12, 8))
-        
+
         for i, date in enumerate(self.events.keys()):
             if i == 0:
                 plt.axvline(date, color="red", linestyle="--", label="Event")

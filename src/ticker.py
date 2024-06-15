@@ -1,7 +1,7 @@
 import os
 import pandas as pd
 from datetime import datetime, timedelta
-from yfinance import Ticker
+import yfinance as yf
 
 
 DATA_PATH = "data/tickers"
@@ -9,11 +9,12 @@ if not os.path.exists(DATA_PATH):
     os.makedirs(DATA_PATH)
 
 
-class ITicker(Ticker):
+class ITicker():
     def __init__(self, ticker_symbol, data_path=DATA_PATH):
-        super().__init__(ticker_symbol)
+        self.ticker = ticker_symbol
         self.data_path = data_path
         self.file_path = os.path.join(data_path, f"{ticker_symbol}.csv")
+        os.makedirs(self.data_path, exist_ok=True)
 
     def get_data(self, period="max", max_age_days=1):
         def is_data_old(file_path, max_age_days):
@@ -22,10 +23,7 @@ class ITicker(Ticker):
         
         if not os.path.exists(self.file_path) or is_data_old(self.file_path, max_age_days):
             # Download the data if it doesn't exist or is old
-            df = self.history(period=period)
-            df.index = df.index.tz_convert('Europe/Zurich').tz_localize(None)
-            if not os.path.exists(self.data_path):
-                os.makedirs(self.data_path)
+            df = yf.download(self.ticker, start="1990-01-01", end=datetime.now().strftime("%Y-%m-%d"))
             df.to_csv(self.file_path)
         else:
             # Load the data if it exists and is not old
@@ -35,7 +33,7 @@ class ITicker(Ticker):
     def get_close(self):
         """Return the closing prices as a pandas Series."""
         df = self.get_data()
-        series = df["Close"]
+        series = df["Adj Close"]
         series.name = self.ticker
         return series
     
