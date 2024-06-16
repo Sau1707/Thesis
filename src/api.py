@@ -2,9 +2,8 @@ import os
 import datetime        
 import requests_cache
 import pandas as pd
-from dotenv import load_dotenv
 import yfinance as yf
-
+from dotenv import load_dotenv
 load_dotenv()
 
 

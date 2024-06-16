@@ -1,66 +1,71 @@
 import os
-import pickle
-import hashlib
+import datetime
 import pandas as pd
 from tqdm import tqdm
-from src.ticker import ITicker
+from src.api import Eodhd
+import pickle
 
 
-def generate_hash(tickers, benchmark):
-    hash_input = ''.join(tickers) + benchmark
-    return hashlib.md5(hash_input.encode()).hexdigest()
+def get_data(exchange = "SW", start = "1995", benchmark = "^SSMI") -> tuple[pd.Series, pd.DataFrame]:
+    """Download data from EODHD and return the SMI and the data of all the stocks listed on the exchange"""
+    os.makedirs("data", exist_ok=True)
 
-
-def save_data_to_file(data, filename):
-    with open(filename, 'wb') as f:
-        pickle.dump(data, f)
-
-
-def load_data_from_file(filename):
-    with open(filename, 'rb') as f:
-        return pickle.load(f)
-
-
-def get_data(tickers: list[str], benchmark: str) -> tuple[pd.Series, pd.DataFrame]:
-    """Return the closing prices of the SMI and the stocks in TICKERS as a pandas DataFrame."""
-    # Ensure the cache directory exists
-    os.makedirs('data/cache', exist_ok=True)
-    
-    # Generate the filename based on the hash
-    data_hash = generate_hash(tickers, benchmark)
-    filename = os.path.join('data/cache', f"{data_hash}.pkl")
-
-    # Try to load the data from the file
+    filename = f"data/data_{exchange}_{start}_{benchmark}.pkl"
     if os.path.exists(filename):
-        return load_data_from_file(filename)
-    
-    # If file doesn't exist, fetch the data
+        with open(filename, "rb") as f:
+            return pickle.load(f)
+
+    # Download the benchmark
+    eod = Eodhd(expire_after=60)
+    bm = eod.get_benchmark(benchmark)
+    bm = bm.loc[start:]
+
+    # Get all the symbols listed and not
+    df_current = eod.get_symbols(exchange)
+    df_current["delisted"] = 0
+    df_delisted = eod.get_symbols(exchange, delisted=1)
+    df_delisted["delisted"] = 1
+    df = pd.concat([df_current, df_delisted])
+
+    # Filter out only stocks
+    df = df[df["Type"] == "Common Stock"]
+    df.set_index("Code", inplace=True)
+
     dfs = []
+    for code in tqdm(df.index, desc="Downloading data"):
+        df_eod = eod.get_eod_data(f"{code}.{exchange}")
+        adj_close = df_eod["adjusted_close"] # adjusted_close
+        adj_close.name = code
 
-    bm = ITicker(benchmark)
-    bm = bm.get_close()
-    dfs.append(bm)
+        # Create a serie with the same index as the benchmark
+        serie = pd.Series(index=bm.index, name=code)
+        valid_index = adj_close.index.intersection(bm.index)
+        serie.loc[valid_index] = adj_close[valid_index]
 
-    for ticker in tqdm(tickers, desc="Downloading data"):
-        try:
-            t = ITicker(ticker)
-            df = t.get_close()
-            dfs.append(df)
-        except Exception as e:
-            print(f"Error downloading {ticker}: {e}")
+        # Analitycs     
+        first_traded = serie.first_valid_index()
+        last_traded = serie.last_valid_index()
+        total_years = (last_traded - first_traded).days / 365 * 252
+        missing_days = serie.loc[first_traded:last_traded].isna().sum()
 
-    df = pd.concat(dfs, axis=1)
-    df.index = pd.to_datetime(df.index)
+        # Filter out stocks that are not traded for more than 30% of the time
+        if missing_days / total_years > 0.3:
+            print(f"[Warning] {code} has more than 30% missing data")
+            continue
+        else:
+            serie.loc[first_traded:last_traded] = serie.loc[first_traded:last_traded].ffill()
 
-    # Remove the benchmark from the stocks
-    bm = df.pop(benchmark)
-    bm.name = benchmark
+            if last_traded < datetime.datetime.now() - datetime.timedelta(days=7):
+                serie.loc[last_traded:] = 0
+        
+        dfs.append(serie)
+
+    # Combine all the data
+    df = pd.concat(dfs, axis=1) 
+    df = df[df.columns[df.max() < 200_000]]
+
+    # Save the data
+    with open(filename, "wb") as f:
+        pickle.dump((bm, df), f)
     
-    # Fill the missing data in the benchmark with the previous value
-    bm = bm.fillna(method='ffill')
-    result = (bm, df)   
-
-    # Save the data to file
-    save_data_to_file(result, filename)
-    
-    return result
+    return bm, df

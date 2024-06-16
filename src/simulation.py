@@ -26,9 +26,9 @@ class Simulation:
         assert date < self.end, "The event is after the end date"
         self.events[date] = event
 
-    def get_stocks(self, date: pd.Timestamp):
+    def get_stocks(self, start_date: pd.Timestamp = None, end_date: pd.Timestamp = None):
         """Return the stocks data, without the future data and the missing data"""
-        return self.stocks.loc[:date].dropna(axis=1, how='all')
+        return self.stocks.loc[start_date:end_date].dropna(axis=1, how='all')
 
     def run(self, weights: pd.DataFrame, *, start_date: pd.Timestamp, end_date: pd.Timestamp):
         """Simulate the portfolio over time"""
@@ -51,15 +51,17 @@ class Simulation:
         previous_date = start_date
         for date, event in tqdm.tqdm(events.items(), desc="Running simulation"):
             # Get the historical data of the stocks for this period
-            historical_stocks = self.get_stocks(date)
+            historical_stocks = self.get_stocks(previous_date, date)
 
             # Get the returns of the stocks in the period and filter out the stocks that are not in the portfolio
             historical_stocks = historical_stocks.ffill()
             returns = historical_stocks.pct_change()
+            print(returns)
             returns = returns[weights.index]
 
             # Save the total return of the portfolio
             for portfolio in weights.columns:
+                assert round(sum(weights[portfolio]), 2) == 1, f"The weights of the portfolio do not sum to 1, {sum(weights[portfolio])}"
                 portfolios.loc[previous_date:date, portfolio] = (returns @ weights[portfolio])
             previous_date = date
 
