@@ -1,57 +1,74 @@
-from tqdm import tqdm
+import argparse
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from src import get_data
 from src.constants import SMI, TICKERS_SW
+from src.utils import get_data
 from src.simulation import Simulation
-from src.sim2 import Simulation2
+from src.frontier import Frontier
 
-bm, stocks = get_data(tickers=TICKERS_SW, benchmark=SMI, start_year=2019, end_year=2024, normalize=True)
+np.random.seed(0)
 
+# Set up argument parser
+parser = argparse.ArgumentParser(description="Generate a plot with specified years and variance.")
+parser.add_argument('--years', type=int, default=5, help='Number of years to simulate')
+parser.add_argument('--variance', type=float, default=0.1, help='Variance for the efficient frontier')
 
-s2 = Simulation2(benchmark=bm.pct_change(), returns=stocks.pct_change())
-weights = np.random.dirichlet(np.ones(len(stocks.columns)), size=1)[0]
-weights = pd.Series(weights, index=stocks.columns)
-data = s2.run(weights=weights, start_date=pd.Timestamp("2000"), end_date=pd.Timestamp("2024"))
-data.plot()
-plt.show()
-exit()
-
-# s1 = Simulation(benchmark=bm, returns=stocks.pct_change())
-# data = s2.run(weights=weights, start_date=pd.Timestamp("2000"), end_date=pd.Timestamp("2024"))
-# data.plot()
-# plt.show()
-# exit()
-
-# s1.add_event(pd.Timestamp("2020-01-01"), lambda x: pd.Series(np.random.dirichlet(np.ones(len(stocks.columns)), size=1)[0], index=stocks.columns))
-# s1.add_event(pd.Timestamp("2021-01-01"), lambda x: pd.Series(np.random.dirichlet(np.ones(len(stocks.columns)), size=1)[0], index=stocks.columns))
-# s1.add_event(pd.Timestamp("2022-01-01"), lambda x: pd.Series(np.random.dirichlet(np.ones(len(stocks.columns)), size=1)[0], index=stocks.columns))
-# s1.add_event(pd.Timestamp("2023-01-01"), lambda x: pd.Series(np.random.dirichlet(np.ones(len(stocks.columns)), size=1)[0], index=stocks.columns))
+args = parser.parse_args()
+YEARS = args.years
+VARIANCE = args.variance
 
 
+def event(historical_stocks: pd.DataFrame, current_weights: pd.DataFrame, start = False):
+    """Event that rebalances the portfolio"""
+    n = len(historical_stocks.columns)
+    portfolios = ['Random - Start', 'Random - Update', 'Frontier - Start', 'Frontier - Update']
+    df = pd.DataFrame(index=historical_stocks.columns, columns=portfolios)
 
-total = {}
-for _ in tqdm(range(100), desc="Running simulations"):
-    # Inizialize the weights
-    weights = np.random.dirichlet(np.ones(len(stocks.columns)), size=1)[0]
-    weights = pd.Series(weights, index=stocks.columns)
-
-    data = s2.run(weights=weights, start_date=pd.Timestamp("2000"), end_date=pd.Timestamp("2024"))
-
-    final = round(data["portfolio"].iloc[-1], 2)
-    if final in total:
-        total[final] += 1
+    frontier = Frontier(historical_stocks, years=YEARS)
+    # Generate the random start
+    if start:
+        df["Random - Start"] = np.random.dirichlet(np.ones(n))
     else:
-        total[final] = 1
+        df["Random - Start"] = current_weights["Random - Start"]
+        df["Random - Start"] = df["Random - Start"].fillna(0)
 
-benchmark = round(data["benchmark"].iloc[-1], 2)
-print(f"Final benchmark: {benchmark}")
-plt.hist(total)
-plt.show()
+    # Generate the random update
+    df["Random - Update"] = np.random.dirichlet(np.ones(n))
+
+    # Generate the efficient frontier start
+    frontier_weights = frontier.mean_variance_portfolio(VARIANCE)
+    if start:
+        df["Frontier - Start"] = frontier_weights
+    else:
+        df["Frontier - Start"] = current_weights["Frontier - Start"]
+        df["Frontier - Start"] = df["Frontier - Start"].fillna(0)
+
+    # Generate the efficient frontier update
+    df["Frontier - Update"] = frontier_weights
+
+    return df
 
 
-# # Add the event dates
-# for event in s1.events.keys():
-#     plt.axvline(event, color="black", linestyle="-", alpha=0.2)
-# plt.show()
+if __name__ == "__main__":
+    bm, stocks = get_data()
+    # Create the simulation
+    sim = Simulation(bm, stocks)
+
+    # Setup the simulation range
+    start_date = pd.Timestamp("2010-01-01")
+    end_date = pd.Timestamp("2024-01-01")
+    
+    # Add an event every 6 months
+    for date in pd.date_range(start_date, end_date, freq='1YE'):
+        sim.add_event(date, event)
+
+    # Run the simulation
+    stocks = sim.get_stocks(start_date)
+    initial_weights = event(stocks, None, start=True)
+    bm_returns, portfolio_values = sim.run(initial_weights, start_date=start_date, end_date=end_date)
+
+    sim.plot(bm_returns, portfolio_values)
+    plt.title(f"{YEARS} years, {VARIANCE} variance")
+    plt.savefig(f"data/simulations/Y{YEARS}-V{VARIANCE}.png", dpi=300)
+    

@@ -8,14 +8,13 @@ from src.utils import get_data
 if __name__ == '__main__':
     bm, df = get_data(benchmark="^SSMI")
 
-    stock = "VALN"
-    data = df[stock]
-    returns = data.pct_change(fill_method=None)
-    total_return = (returns + 1).cumprod() - 1
-    total_return.plot(label=stock)
-    plt.legend()
-    plt.show()
-    exit()
+    # stock = "VALN"
+    # data = df[stock]
+    # returns = data.pct_change(fill_method=None)
+    # total_return = (returns + 1).cumprod() - 1
+    # total_return.plot(label=stock)
+    # plt.legend()
+    # plt.show()
 
     # SMI.SW
     bm = bm / bm.iloc[0]
