@@ -2,7 +2,6 @@ import argparse
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from src.constants import SMI, TICKERS_SW
 from src.utils import get_data
 from src.simulation import Simulation
 from src.frontier import Frontier
