@@ -23,13 +23,11 @@ def event(historical_stocks: pd.DataFrame, current_weights: pd.DataFrame):
     n = len(historical_stocks.columns)
     portfolios = ['Random - Update', 'Frontier - Update']
     df = pd.DataFrame(index=historical_stocks.columns, columns=portfolios)
-
-    frontier = Frontier(historical_stocks, years=YEARS)
-
+    
     # Generate the random
     df["Random - Update"] = np.random.dirichlet(np.ones(n))
-
     # Generate the efficient frontier
+    frontier = Frontier(historical_stocks, years=YEARS)
     frontier_weights = frontier.mean_variance_portfolio(0.5)
     df["Frontier - Update"] = frontier_weights
 
@@ -42,7 +40,7 @@ if __name__ == "__main__":
     stocks = data.get_data(liquidity=0.9)
 
     # Get 20 random stocks
-    stocks = stocks.sample(20, axis=1)
+    stocks = stocks.sample(50, axis=1)
     
     # Create the simulation
     sim = Simulation(bm, stocks)

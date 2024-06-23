@@ -30,8 +30,8 @@ class Simulation:
 
     def get_stocks(self, start_date: pd.Timestamp = None, end_date: pd.Timestamp = None):
         """Return all the stocks in the range of dates"""
-        return self.stocks.loc[start_date:end_date].dropna(axis=1)
-
+        return self.stocks.loc[start_date:end_date]  #.dropna(axis=1)
+    
     def run(self, weights: pd.DataFrame, *, start_date: pd.Timestamp, end_date: pd.Timestamp):
         """Simulate the portfolio over time"""
         assert start_date >= self.start, "The start date is before the simulation start date"
@@ -51,10 +51,11 @@ class Simulation:
         # Create the portfolio, where the column is the total return
         portfolios = pd.DataFrame(index=stocks.index, columns=weights.columns)
         previous_date = start_date
-        for date, event in tqdm.tqdm(events.items(), desc="Running simulation"):
+ 
+        for date, event in events.items():
             # Get the historical data of the stocks for this period
             historical_stocks = self.get_stocks(previous_date, date)
-   
+
             # Get the returns of the stocks in the period and filter out the stocks that are not in the portfolio
             historical_stocks = historical_stocks.ffill()
             returns = historical_stocks.pct_change()
@@ -68,6 +69,8 @@ class Simulation:
 
             # The weights of the portfolio can be updated by the event
             if event is not None:
+                historical_stocks = self.get_stocks(None, date)
+                print(historical_stocks)
                 weights = event(historical_stocks, weights)
 
         # Calculate the returns of the benchmark
