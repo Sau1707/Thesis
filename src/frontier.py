@@ -1,10 +1,7 @@
 import numpy as np
 import pandas as pd
-import tqdm
+import gurobipy as gp
 import matplotlib.pyplot as plt
-from scipy.optimize import Bounds
-from scipy.optimize import LinearConstraint, NonlinearConstraint
-from scipy.optimize import minimize
 
 
 class Frontier:
@@ -93,41 +90,9 @@ class Frontier:
         else:
             weights = np.random.dirichlet(np.ones(len(self._columns)), size=n_portfolios)
             df = pd.DataFrame(weights.T, index=self._columns)
-        return df
-    
-    def mean_variance_portfolio(self, variance: float | list[float]) -> pd.Series:
-        """
-        Calculate the efficient frontier of the portfolio
-            Using:
-            - Each stock can have a weight between 0 and 1
-            - The sum of the weights must be 1
-            - The estimated risk must not exceed a prespecified maximal admissible level of variance 
-            - The objective is to minimize the negative return
-        """
-        if isinstance(variance, float):
-            variance = [variance]
-
-        # We use the stocks that have more than X years of data
-        fn_constraint = lambda w: w.T @ self._correlation_matrix @ w
-
-        bounds = Bounds(0, 1)
-        linear = LinearConstraint(np.ones(len(self._returns.columns)), 1, 1)
-
-        w0 = np.ones(len(self._returns.columns)) / len(self._returns.columns)
-        w0 /= np.sum(w0)
         
-        df = pd.DataFrame(index=self._columns)
-        for v in tqdm.tqdm(variance, desc="Calculating Mean Variance Portfolios..."):
-            constraint = NonlinearConstraint(fn_constraint, -np.inf, v**2)
-
-            # Optimize the weights, calculate the returns and volatility
-            res = minimize(lambda x: - self.returns(x), w0, method='SLSQP', constraints=[constraint, linear], bounds=bounds) #  options={'disp': True}
-            assert res.success, f"Optimization failed: {res.message}"
-            weights = res.x / sum(res.x)
-            weights = pd.Series(weights, index=self._returns.columns)
-            df[f"variance_{v}"] = weights
-
-        return df.fillna(0)
+        df.columns = [f"random_{i}" for i in range(n_portfolios)]
+        return df
     
     def mean_ENC_portfolio(self, N: int | list[int]):
         """Calculate the efficient frontier of the portfolio
@@ -137,31 +102,36 @@ class Frontier:
         if isinstance(N, int):
             N = [N]
 
-        w0 = np.ones(len(self._returns.columns)) / len(self._returns.columns)
-        w0 /= np.sum(w0)
+        return df.fillna(0)
+
+    def mean_variance_portfolio(self, variance: float | list[float]) -> pd.DataFrame:
+        """"""
+        if isinstance(variance, float):
+            variance = [variance]
+
+        # Initialize the model
+        m = gp.Model()
+        m.params.OutputFlag = 0
+
+        # Setup the optimization problem
+        x = m.addMVar(len(self._mean_returns), lb=0, ub=1, name="x") # 0 <= x[i] <= 1
+        m.addConstr(x.sum() == 1, name="Budget_Constraint") # all investments sum up to 1
+        m.setObjective(self._mean_returns.to_numpy() @ x, gp.GRB.MAXIMIZE)
 
         df = pd.DataFrame(index=self._columns)
-        for n in tqdm.tqdm(N, desc="Calculating Mean ENC Portfolios..."):
-            gamma = 0.5
+        variance_constr = None
+        for v in variance:
+            # Remove previous variance constraint if it exists
+            if variance_constr is not None:
+                m.remove(variance_constr)
 
-            # Add the constraint that the number of constituents must be N
-            fn_constraint = lambda w: (w > 0.0001).sum() - n
-            constraint = NonlinearConstraint(fn_constraint, 0, 0)
+            # Limit on variance
+            variance_constr = m.addConstr(x @ self._correlation_matrix.to_numpy() @ x <= v**2, name="Variance")
+            m.optimize()
 
-            
-            fn = lambda x: - (1 - gamma) * x @ self._mean_returns + gamma * (n * x.T @ self._correlation_matrix @ x + 1 / n)
-
-            res = minimize(fn, w0, method='SLSQP', options={'disp': True}, constraints=[constraint])
-            weights = res.x / sum(res.x)
-            weights = pd.Series(weights, index=self._returns.columns)
-            df[f"N_{n}"] = weights
-        #for gamma in tqdm.tqdm([i/10 for i in range(1, 10)], desc="Calculating Mean ENC Portfolios..."):
-        #    
-        #
-        #    res = minimize(fn, w0, method='BFGS', options={'disp': True})
-        #    weights = res.x / sum(res.x)
-        #    weights = pd.Series(weights, index=self._returns.columns)
-        #    df[f"gamma_{gamma}"] = weights
+            # Print investments (with non-negligible values, i.e., > 1e-5)
+            positions = pd.Series(name="Position", data=x.X, index=self._mean_returns.index)
+            df[f"max_returns_{v}"] = positions[positions > 1e-5]
 
         return df.fillna(0)
     
@@ -184,52 +154,39 @@ class Frontier:
 
         plt.subplot(1, 2, 1)
         plt.scatter(volatility, returns, c=sharp_ratio, cmap='viridis')
-        plt.xlabel("Volatility")
-        plt.ylabel("Returns")
+        plt.xlabel("Standard Deviation ($\sigma$)")
+        plt.ylabel("Returns ($\mu$)")
         plt.colorbar(label='Sharpe Ratio')
-        plt.legend(df.columns)
-        plt.title("Efficient Frontier")
 
-        # Number of constituents vs returns
+        columns = [col for col in weights.columns if not col.startswith("random")]
+        volatility = volatility[columns]
+        df = df[columns]
         num_constituents = df.apply(lambda x: (x > 0.0001).sum())
-
-        # Filter out all the portfolios that have more then 80% of the stocks
-        num_constituents = num_constituents #[num_constituents < 0.8 * len(df.columns)]
-        returns = returns[num_constituents.index]
-        sharp_ratio = sharp_ratio[num_constituents.index]
+        sharp_ratio = sharp_ratio[columns]
         
         plt.subplot(1, 2, 2)
-        plt.scatter(num_constituents, returns, c=sharp_ratio, cmap='viridis')
-        plt.xlabel("Number of Constituents")
-        plt.ylabel("Returns")
+        plt.scatter(volatility, num_constituents, c=sharp_ratio, cmap='viridis')
+        plt.xlabel("Standard Deviation ($\sigma$)")
+        plt.ylabel("Number of Constituents")
         plt.colorbar(label='Sharpe Ratio')
-        plt.title("Number of Constituents vs Returns")
 
         plt.tight_layout()
         plt.show()
 
 
-
 if __name__ == "__main__":
-    from src.utils import get_data
-    pd.set_option('display.max_rows', 10)
-    # pd.set_option('display.max_columns', None)
+    from src.utils import Dataset
+    data =  Dataset("SW", "1995", "^SSMI")
+    bm = data.get_benchmark()
+    stocks = data.get_data(liquidity=0.9)
     np.random.seed(0)
 
-    bm, stocks = get_data()
-    # Get 20 random columns
-    # stocks = stocks.sample(n=10, axis=1)
-
     ef = Frontier(stocks)
-    dfs = [
-        # ef.mean_variance_portfolio([i/5 for i in range(1, 5)]),
-        ef.mean_ENC_portfolio([i for i in range(1, 20)]),
-        #ef.random_portfolios(5, use_years=True)
-    ] 
+    df = pd.concat([
+        ef.mean_variance_portfolio([i/10 for i in range(1, 10)]),
+        ef.random_portfolios(1_000, use_years=True)
+    ], axis=1)
 
-    df = pd.concat(dfs, axis=1)
     print(df)
 
     ef.plot(df)
-    # 
-    # print(ef.random_portfolios(10, use_years=False))

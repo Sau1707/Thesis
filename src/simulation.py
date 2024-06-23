@@ -16,6 +16,7 @@ class Simulation:
         # Get the max and the min date
         self.start = self.stocks.index.min()
         self.end = self.stocks.index.max()
+        print(f"[Simulation] {self.start.strftime('%Y-%m-%d')} -> {self.end.strftime('%Y-%m-%d')}")
 
         # Keep track of the events and the portfolio value
         self.events = {}
@@ -25,10 +26,11 @@ class Simulation:
         assert date > self.start, "The event is before the start date"
         assert date < self.end, "The event is after the end date"
         self.events[date] = event
+        print(f"[Simulation] Event added at {date.strftime('%Y-%m-%d')}")
 
     def get_stocks(self, start_date: pd.Timestamp = None, end_date: pd.Timestamp = None):
-        """Return the stocks data, without the future data and the missing data"""
-        return self.stocks.loc[start_date:end_date].dropna(axis=1, how='all')
+        """Return all the stocks in the range of dates"""
+        return self.stocks.loc[start_date:end_date].dropna(axis=1)
 
     def run(self, weights: pd.DataFrame, *, start_date: pd.Timestamp, end_date: pd.Timestamp):
         """Simulate the portfolio over time"""
@@ -52,11 +54,10 @@ class Simulation:
         for date, event in tqdm.tqdm(events.items(), desc="Running simulation"):
             # Get the historical data of the stocks for this period
             historical_stocks = self.get_stocks(previous_date, date)
-
+   
             # Get the returns of the stocks in the period and filter out the stocks that are not in the portfolio
             historical_stocks = historical_stocks.ffill()
             returns = historical_stocks.pct_change()
-            print(returns)
             returns = returns[weights.index]
 
             # Save the total return of the portfolio

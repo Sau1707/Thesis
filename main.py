@@ -2,7 +2,7 @@ import argparse
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from src.utils import get_data
+from src.utils import Dataset
 from src.simulation import Simulation
 from src.frontier import Frontier
 
@@ -18,39 +18,32 @@ YEARS = args.years
 VARIANCE = args.variance
 
 
-def event(historical_stocks: pd.DataFrame, current_weights: pd.DataFrame, start = False):
+def event(historical_stocks: pd.DataFrame, current_weights: pd.DataFrame):
     """Event that rebalances the portfolio"""
     n = len(historical_stocks.columns)
-    portfolios = ['Random - Start', 'Random - Update', 'Frontier - Start', 'Frontier - Update']
+    portfolios = ['Random - Update', 'Frontier - Update']
     df = pd.DataFrame(index=historical_stocks.columns, columns=portfolios)
 
     frontier = Frontier(historical_stocks, years=YEARS)
-    # Generate the random start
-    if start:
-        df["Random - Start"] = np.random.dirichlet(np.ones(n))
-    else:
-        df["Random - Start"] = current_weights["Random - Start"]
-        df["Random - Start"] = df["Random - Start"].fillna(0)
 
-    # Generate the random update
+    # Generate the random
     df["Random - Update"] = np.random.dirichlet(np.ones(n))
 
-    # Generate the efficient frontier start
-    frontier_weights = frontier.mean_variance_portfolio(VARIANCE)
-    if start:
-        df["Frontier - Start"] = frontier_weights
-    else:
-        df["Frontier - Start"] = current_weights["Frontier - Start"]
-        df["Frontier - Start"] = df["Frontier - Start"].fillna(0)
-
-    # Generate the efficient frontier update
+    # Generate the efficient frontier
+    frontier_weights = frontier.mean_variance_portfolio(0.5)
     df["Frontier - Update"] = frontier_weights
 
     return df
 
 
 if __name__ == "__main__":
-    bm, stocks = get_data()
+    data =  Dataset("SW", "1995", "^SSMI")
+    bm = data.get_benchmark()
+    stocks = data.get_data(liquidity=0.9)
+
+    # Get 20 random stocks
+    stocks = stocks.sample(20, axis=1)
+    
     # Create the simulation
     sim = Simulation(bm, stocks)
 
@@ -64,7 +57,7 @@ if __name__ == "__main__":
 
     # Run the simulation
     stocks = sim.get_stocks(start_date)
-    initial_weights = event(stocks, None, start=True)
+    initial_weights = event(stocks, None)
     bm_returns, portfolio_values = sim.run(initial_weights, start_date=start_date, end_date=end_date)
 
     sim.plot(bm_returns, portfolio_values)
