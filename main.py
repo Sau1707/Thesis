@@ -2,7 +2,7 @@ import argparse
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from src.utils import Dataset
+from src.dataset import Dataset
 from src.simulation import Simulation
 from src.frontier import Frontier
 

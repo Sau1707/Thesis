@@ -1,17 +1,23 @@
-import os
-import pickle
-import datetime
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
 from tqdm import tqdm
 from src.api import Eodhd
+from pypfopt import expected_returns
 
 
 class Stocks:
     def __init__(self, stocks: pd.DataFrame):
-        self._stocks = stocks 
+        self._stocks = stocks.iloc[:-1]  # Never use the last date as it can be incomplete
+    
+    def get_start_date(self) -> pd.Timestamp:
+        """Return the start date of the stocks"""
+        return self._stocks.index.min()
+    
+    def get_end_date(self) -> pd.Timestamp:
+        """Return the end date of the stocks"""
+        return self._stocks.index.max()
     
     def get_historical(self, *, start: pd.Timestamp = None, end: pd.Timestamp = None, valid: bool = True):
         """Get the historical data of the stocks
@@ -22,6 +28,8 @@ class Stocks:
         df = self._stocks.loc[start:end]
         if valid:
             df = df.dropna(axis=1)
+            print(df)
+            df = df.loc[:, df.iloc[-1] != 0]
         return df
     
     def get_stocks(self, *, date: pd.Timestamp = None) -> np.array:
@@ -48,18 +56,35 @@ class Stocks:
             end: End date
         """
         returns = self.get_returns(start=start, end=end, valid=valid)
-        return (1 + returns).cumprod().iloc[-1] - 1
+        total_return = (1 + returns).cumprod() - 1
+        return total_return
+    
+    def get_mean_returns(self) -> pd.Series:
+        """Get the mean returns of the stocks"""
+        return expected_returns.mean_historical_return(self._stocks)
 
 
 
 
 if __name__ == "__main__":
     from src.dataset import Dataset
-    data =  Dataset("SW", "1995", "^SSMI")
+    data =  Dataset("SW", "2000", "^SSMI")
     df = data.get_data(liquidity=0.99)
+    bm = data.get_benchmark()
+    np.random.seed(0)
 
     stocks = Stocks(df)
-    print(stocks.get_historical(valid=True)) # .to_csv("stocks.csv")
-    print(stocks.get_stocks(date=pd.Timestamp("1995-01-01")))
-    print(stocks.get_returns(start=pd.Timestamp("1995-01-01"), end=pd.Timestamp("1996-01-01")))
-    print(stocks.get_total_return(start=pd.Timestamp("1995-01-01"), end=pd.Timestamp("1996-01-01"), valid=False))
+    historical = stocks.get_historical(valid=False)
+    returns = stocks.get_returns(valid=False)
+    total_return = stocks.get_total_return(valid=False)
+
+    print(len(historical.columns), len(returns.columns), len(total_return.columns))
+
+    # Plot the total return of the portfolio
+    total_return.mean(axis=1).plot(label="Mean Stocks")
+    bm_returns = (1 + bm.pct_change()).cumprod() - 1
+    bm_returns.plot(label="Benchmark")
+    plt.xlabel("Date")
+    plt.ylabel("Total Return")
+    plt.legend()
+    plt.show()

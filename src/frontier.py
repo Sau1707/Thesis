@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import gurobipy as gp
 import matplotlib.pyplot as plt
+from src.utils import Stocks
 
 
 class Frontier:
@@ -9,7 +10,7 @@ class Frontier:
     # TODO: Plot with sharp ratio
     # TODO: best years for data ? 
 
-    def __init__(self, stocks: pd.DataFrame, years: int = 10):
+    def __init__(self, stocks: pd.DataFrame, years: int = 20):
         """
             stocks: 
             - A DataFrame the the stocks closing adjusted prices as columns
@@ -21,27 +22,30 @@ class Frontier:
         """
         # Make sure that all the stocks have data
         assert not stocks.empty, "No stocks to invest in"
-        self._columns = stocks.columns
+        self._data = Stocks(stocks)
+        
+        # Get the range of the calculations
+        self._end_date = self._data.get_end_date()
+        self._start_date = self._end_date - pd.DateOffset(years=years)
 
-        # Get the simulation range
-        last_date = stocks.index[-2] # Never use the last date as it can be incomplete
-        first_date = last_date - pd.DateOffset(years=years)
-  
-        # Use the last X years of data for the stocks, and remove the ones that have no data
-        stocks = stocks.loc[first_date:last_date]
-        stocks = stocks.replace(0, np.nan)
-        stocks = stocks.dropna(axis=1)
-        self._stocks = stocks
- 
-        # Calculate the returns of the stocks
-        stocks = stocks.fillna(0)
-        self._returns = stocks.pct_change()
-        self._returns = (1 + self._returns).cumprod() - 1
-        self._returns.iloc[0] = 1
+        # Save the current stocks (columns of the dataframe)
+        self._columns = self._data.get_stocks(date=self._end_date)
+
+        # Get the data for the calculations
+        self._stocks = self._data.get_historical(start=self._start_date, end=self._end_date, valid=True)
+        self._returns = self._data.get_returns(start=self._start_date, end=self._end_date, valid=True)
+        self._total_return = self._data.get_total_return(start=self._start_date, end=self._end_date,  valid=True)
+        
+        # Plot the average total return
+        # self._total_return.mean(axis=1).plot()
+        # plt.show()
 
         # Some utilities
+        
+        self._mean_returns = (1 + self._returns).prod() ** (252 / self._returns.count()) - 1
         self._correlation_matrix = self._stocks.corr()
-        self._mean_returns = self._returns.mean()
+        # self._mean_returns = self._total_return.iloc[-1]
+        # print(self._mean_returns)
 
     ##################################################################################
     # Utilities
@@ -99,8 +103,40 @@ class Frontier:
         Using:
         TODO: 
         """
+        df = pd.DataFrame(index=self._columns)
         if isinstance(N, int):
             N = [N]
+
+        r = 0.0001  # Required return
+        K = 40  # Minimal number of stocks
+        u = 0.15  # Maximal position size
+        l = 0.0005  # Minimal position size
+        mu = self._mean_returns
+        Sigma = self._correlation_matrix
+
+        m = gp.Model()
+        # Make sure that all the stocks are the the bounds
+        x = m.addMVar(len(mu), lb=0, ub=u, name="x")
+        b = m.addMVar(len(mu), vtype=gp.GRB.BINARY, name="b")
+
+        m.addConstr(x.sum() == 1, name="Budget_Constraint")
+        m.addConstr(mu.to_numpy() @ x >= r, name="Minimal_Return")
+        m.addConstr(x <= b, name="Indicator")
+
+        m.addConstr(x >= l * b, name="Minimal_Position")
+        m.addConstr(b.sum() >= K, name="Diversification")
+
+        m.setObjective(x @ Sigma.to_numpy() @ x, gp.GRB.MINIMIZE)
+        m.optimize()
+
+        print(f"Minimum Risk:     {m.ObjVal:.6f}")
+        print(f"Expected return:  {mu @ x.X:.6f}")
+        print(f"Solution time:    {m.Runtime:.2f} seconds\n")
+        print(f"Number of stocks: {sum(b.X)}\n")
+
+        # Print investments (with non-negligible value, i.e. >1e-5)
+        positions = pd.Series(name="Position", data=x.X, index=mu.index)
+        df[f"ENC_{K}"] = positions[positions > 1e-5]
 
         return df.fillna(0)
 
@@ -132,7 +168,7 @@ class Frontier:
             # Print investments (with non-negligible values, i.e., > 1e-5)
             positions = pd.Series(name="Position", data=x.X, index=self._mean_returns.index)
             df[f"max_returns_{v}"] = positions[positions > 1e-5]
-
+            
         return df.fillna(0)
     
     ##################################################################################
@@ -154,8 +190,8 @@ class Frontier:
 
         plt.subplot(1, 2, 1)
         plt.scatter(volatility, returns, c=sharp_ratio, cmap='viridis')
-        plt.xlabel("Standard Deviation ($\sigma$)")
-        plt.ylabel("Returns ($\mu$)")
+        plt.xlabel(r"Standard Deviation ($\sigma$)")
+        plt.ylabel(r"Returns ($\mu$)")
         plt.colorbar(label='Sharpe Ratio')
 
         columns = [col for col in weights.columns if not col.startswith("random")]
@@ -166,27 +202,48 @@ class Frontier:
         
         plt.subplot(1, 2, 2)
         plt.scatter(volatility, num_constituents, c=sharp_ratio, cmap='viridis')
-        plt.xlabel("Standard Deviation ($\sigma$)")
-        plt.ylabel("Number of Constituents")
+        plt.xlabel(r"Standard Deviation")
+        plt.ylabel(r"Number of Constituents")
         plt.colorbar(label='Sharpe Ratio')
 
         plt.tight_layout()
         plt.show()
 
+    def plot_returns(self, weights: pd.DataFrame):
+        """Plot the returns of the portfolios"""
+        plt.figure(figsize=(12, 6))
+
+        total_return = self._data.get_total_return(start=self._start_date, end=self._end_date, valid=False)
+        total_return = total_return.fillna(0)
+
+        for portfolio in weights:
+            plt.plot(total_return @ weights[portfolio], label=portfolio)
+        plt.legend()
+        plt.show()
+
 
 if __name__ == "__main__":
-    from src.utils import Dataset
+    from src.dataset import Dataset
     data =  Dataset("SW", "1995", "^SSMI")
     bm = data.get_benchmark()
-    stocks = data.get_data(liquidity=0.9)
+    stocks = data.get_data(liquidity=0.99)
     np.random.seed(0)
 
+    # Get 200 random stocks
+    # stocks = stocks.sample(200, axis=1)
+    
+
     ef = Frontier(stocks)
+    
+    # exit()
+
     df = pd.concat([
-        ef.mean_variance_portfolio([i/10 for i in range(1, 10)]),
-        ef.random_portfolios(1_000, use_years=True)
+        ef.mean_ENC_portfolio(60),
+        ef.mean_variance_portfolio([0.8]), # [i/10 for i in range(1, 10)]
+        ef.random_portfolios(2, use_years=True)
     ], axis=1)
 
-    print(df)
+    # print(df)
 
+    ef.plot_returns(df)
     ef.plot(df)

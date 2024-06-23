@@ -30,7 +30,7 @@ class Simulation:
 
     def get_stocks(self, start_date: pd.Timestamp = None, end_date: pd.Timestamp = None):
         """Return all the stocks in the range of dates"""
-        return self.stocks.loc[start_date:end_date]  #.dropna(axis=1)
+        return self.stocks.loc[start_date:end_date] 
     
     def run(self, weights: pd.DataFrame, *, start_date: pd.Timestamp, end_date: pd.Timestamp):
         """Simulate the portfolio over time"""
