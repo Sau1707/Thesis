@@ -28,7 +28,6 @@ class Stocks:
         df = self._stocks.loc[start:end]
         if valid:
             df = df.dropna(axis=1)
-            print(df)
             df = df.loc[:, df.iloc[-1] != 0]
         return df
     

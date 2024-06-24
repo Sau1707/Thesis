@@ -6,10 +6,6 @@ from src.utils import Stocks
 
 
 class Frontier:
-    # TODO: Create plot with random vs best frontier
-    # TODO: Plot with sharp ratio
-    # TODO: best years for data ? 
-
     def __init__(self, stocks: pd.DataFrame, years: int = 20):
         """
             stocks: 
@@ -36,16 +32,10 @@ class Frontier:
         self._returns = self._data.get_returns(start=self._start_date, end=self._end_date, valid=True)
         self._total_return = self._data.get_total_return(start=self._start_date, end=self._end_date,  valid=True)
         
-        # Plot the average total return
-        # self._total_return.mean(axis=1).plot()
-        # plt.show()
-
         # Some utilities
-        
         self._mean_returns = (1 + self._returns).prod() ** (252 / self._returns.count()) - 1
         self._correlation_matrix = self._stocks.corr()
-        # self._mean_returns = self._total_return.iloc[-1]
-        # print(self._mean_returns)
+
 
     ##################################################################################
     # Utilities
@@ -98,76 +88,89 @@ class Frontier:
         df.columns = [f"random_{i}" for i in range(n_portfolios)]
         return df
     
-    def mean_ENC_portfolio(self, N: int | list[int]):
-        """Calculate the efficient frontier of the portfolio
-        Using:
-        TODO: 
-        """
+    def mean_ENC_portfolio(self, N: int, u: float = 0.15, l: float = 0.005, max_returns = 1) -> pd.DataFrame:
+        """Calculate the efficient frontier of the portfolio"""
         df = pd.DataFrame(index=self._columns)
-        if isinstance(N, int):
-            N = [N]
+        constrain = None
 
-        r = 0.0001  # Required return
-        K = 40  # Minimal number of stocks
-        u = 0.15  # Maximal position size
-        l = 0.0005  # Minimal position size
-        mu = self._mean_returns
-        Sigma = self._correlation_matrix
-
-        m = gp.Model()
-        # Make sure that all the stocks are the the bounds
-        x = m.addMVar(len(mu), lb=0, ub=u, name="x")
-        b = m.addMVar(len(mu), vtype=gp.GRB.BINARY, name="b")
-
-        m.addConstr(x.sum() == 1, name="Budget_Constraint")
-        m.addConstr(mu.to_numpy() @ x >= r, name="Minimal_Return")
-        m.addConstr(x <= b, name="Indicator")
-
-        m.addConstr(x >= l * b, name="Minimal_Position")
-        m.addConstr(b.sum() >= K, name="Diversification")
-
-        m.setObjective(x @ Sigma.to_numpy() @ x, gp.GRB.MINIMIZE)
-        m.optimize()
-
-        print(f"Minimum Risk:     {m.ObjVal:.6f}")
-        print(f"Expected return:  {mu @ x.X:.6f}")
-        print(f"Solution time:    {m.Runtime:.2f} seconds\n")
-        print(f"Number of stocks: {sum(b.X)}\n")
-
-        # Print investments (with non-negligible value, i.e. >1e-5)
-        positions = pd.Series(name="Position", data=x.X, index=mu.index)
-        df[f"ENC_{K}"] = positions[positions > 1e-5]
-
-        return df.fillna(0)
-
-    def mean_variance_portfolio(self, variance: float | list[float]) -> pd.DataFrame:
-        """"""
-        if isinstance(variance, float):
-            variance = [variance]
+        returns = 0
+        step = 0.01
 
         # Initialize the model
         m = gp.Model()
         m.params.OutputFlag = 0
 
         # Setup the optimization problem
-        x = m.addMVar(len(self._mean_returns), lb=0, ub=1, name="x") # 0 <= x[i] <= 1
-        m.addConstr(x.sum() == 1, name="Budget_Constraint") # all investments sum up to 1
-        m.setObjective(self._mean_returns.to_numpy() @ x, gp.GRB.MAXIMIZE)
+        x = m.addMVar(len(self._mean_returns), lb=0, ub=u, name="x")
+        b = m.addMVar(len(self._mean_returns), vtype=gp.GRB.BINARY, name="b")
+        m.addConstr(x.sum() == 1, name="Budget_Constraint")
+        m.addConstr(x <= b, name="Indicator")
+        m.addConstr(x >= l * b, name="Minimal_Position")
+        m.addConstr(b.sum() >= N, name="Diversification")
+        m.setObjective(x @ self._correlation_matrix.to_numpy() @ x, gp.GRB.MINIMIZE)
 
-        df = pd.DataFrame(index=self._columns)
-        variance_constr = None
-        for v in variance:
+        best_weights = None
+        while returns < max_returns and step > 1e-5:
             # Remove previous variance constraint if it exists
-            if variance_constr is not None:
-                m.remove(variance_constr)
+            if constrain is not None:
+                m.remove(constrain)
 
-            # Limit on variance
-            variance_constr = m.addConstr(x @ self._correlation_matrix.to_numpy() @ x <= v**2, name="Variance")
+            # print(f"Returns: {returns:.6f}")
+            # Add the constraint with the current returns
+            constrain = m.addConstr(self._mean_returns.to_numpy() @ x >= returns, name="Minimal_Return")
             m.optimize()
 
-            # Print investments (with non-negligible values, i.e., > 1e-5)
-            positions = pd.Series(name="Position", data=x.X, index=self._mean_returns.index)
-            df[f"max_returns_{v}"] = positions[positions > 1e-5]
+            if m.Status == gp.GRB.OPTIMAL:
+                best_weights = x.X
+                returns += step
+            else:
+                returns -= step
+                step /= 10
+        # Print investments (with non-negligible value, i.e. >1e-5)
+        positions = pd.Series(name="Position", data=best_weights, index=self._mean_returns.index)
+        df[f"ENC"] = positions[positions > 1e-5]
+
+        return df.fillna(0)
+
+    def mean_variance_portfolio(self, min_variance: float = 0) -> pd.DataFrame:
+        """Return the minimum variance portfolio"""
+        df = pd.DataFrame(index=self._columns)
+        constrain = None
+
+        # Keep track of the current variance and the current step, we start from 1 and go down
+        variance = 1
+        step = 0.1
+
+        # Initialize the model
+        m = gp.Model()
+        m.params.OutputFlag = 0
+
+        # Setup the optimization problem
+        x = m.addMVar(len(self._mean_returns), lb=0, ub=1, name="x")         # 0 <= x[i] <= 1
+        m.addConstr(x.sum() == 1, name="Budget_Constraint")                  # All investments sum up to 1
+        m.setObjective(self._mean_returns.to_numpy() @ x, gp.GRB.MAXIMIZE)   # Objective function
+
+        best_weights = None
+        while variance > min_variance and step > 1e-5:
+            # Remove previous variance constraint if it exists
+            if constrain is not None:
+                m.remove(constrain)
+
+            # Add the constraint with the current variance
+            # print(f"Variance: {variance:.6f}")
+            constrain = m.addConstr(x @ self._correlation_matrix.to_numpy() @ x <= variance**2, name="Variance")
+            m.optimize()
+
+            if m.Status == gp.GRB.OPTIMAL:
+                best_weights = x.X
+                variance -= step
+            else:
+                variance += step
+                step /= 10
+        
+        # Save the results
+        positions = pd.Series(name="Position", data=best_weights, index=self._mean_returns.index)
+        df[f"min_variance"] = positions[positions > 1e-5]
             
         return df.fillna(0)
     
@@ -179,6 +182,8 @@ class Frontier:
         Plot the efficient frontier and number of constituents
             weights: 
             - A DataFrame with the weights of the stocks
+
+        TODO: transform this in a table
         """
         df = weights.loc[self._returns.columns]
         returns = df.apply(self.returns)
@@ -216,8 +221,17 @@ class Frontier:
         total_return = self._data.get_total_return(start=self._start_date, end=self._end_date, valid=False)
         total_return = total_return.fillna(0)
 
-        for portfolio in weights:
-            plt.plot(total_return @ weights[portfolio], label=portfolio)
+        # Plot the returns of the random portfolios
+        returns = weights.apply(lambda x: total_return @ x)
+        returns_random = returns[[col for col in returns.columns if col.startswith("random")]]
+        returns_random = returns_random.mean(axis=1)
+        plt.plot(returns_random, label="Random Portfolios")
+
+        # Plot the returns of the efficient portfolios
+        returns = returns[[col for col in returns.columns if not col.startswith("random")]]
+        for col in returns.columns:
+            print(col, len(weights[col][weights[col] > 1e-5]))
+            plt.plot(returns[col], label=col)
         plt.legend()
         plt.show()
 
@@ -227,23 +241,15 @@ if __name__ == "__main__":
     data =  Dataset("SW", "1995", "^SSMI")
     bm = data.get_benchmark()
     stocks = data.get_data(liquidity=0.99)
-    np.random.seed(0)
-
-    # Get 200 random stocks
-    # stocks = stocks.sample(200, axis=1)
-    
+    # np.random.seed(0)
 
     ef = Frontier(stocks)
     
-    # exit()
-
     df = pd.concat([
-        ef.mean_ENC_portfolio(60),
-        ef.mean_variance_portfolio([0.8]), # [i/10 for i in range(1, 10)]
-        ef.random_portfolios(2, use_years=True)
+        ef.mean_ENC_portfolio(50),
+        ef.mean_variance_portfolio(0.6),
+        ef.random_portfolios(20, use_years=True)
     ], axis=1)
 
-    # print(df)
-
     ef.plot_returns(df)
-    ef.plot(df)
+    # ef.plot(df)
