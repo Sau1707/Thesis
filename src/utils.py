@@ -26,6 +26,7 @@ class Stocks:
             valid: Only return the valid data
         """
         df = self._stocks.loc[start:end]
+        print(start, end, df.shape)
         if valid:
             df = df.dropna(axis=1)
             df = df.loc[:, df.iloc[-1] != 0]

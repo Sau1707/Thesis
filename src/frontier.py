@@ -36,7 +36,6 @@ class Frontier:
         self._mean_returns = (1 + self._returns).prod() ** (252 / self._returns.count()) - 1
         self._correlation_matrix = self._stocks.corr()
 
-
     ##################################################################################
     # Utilities
     ##################################################################################
@@ -88,12 +87,14 @@ class Frontier:
         df.columns = [f"random_{i}" for i in range(n_portfolios)]
         return df
     
-    def mean_ENC_portfolio(self, N: int, u: float = 0.15, l: float = 0.005, max_returns = 1) -> pd.DataFrame:
+    def mean_ENC_portfolio(self, N: int, u: float = 0.15, l: float = 0.005, max_returns = 2) -> pd.DataFrame:
         """Calculate the efficient frontier of the portfolio"""
         df = pd.DataFrame(index=self._columns)
+        print(df)
+
         constrain = None
 
-        returns = 0
+        returns = 0.001
         step = 0.01
 
         # Initialize the model
@@ -120,12 +121,17 @@ class Frontier:
             constrain = m.addConstr(self._mean_returns.to_numpy() @ x >= returns, name="Minimal_Return")
             m.optimize()
 
+            print(returns)
+
             if m.Status == gp.GRB.OPTIMAL:
                 best_weights = x.X
                 returns += step
             else:
                 returns -= step
                 step /= 10
+
+        assert best_weights is not None, "No optimal solution found"
+
         # Print investments (with non-negligible value, i.e. >1e-5)
         positions = pd.Series(name="Position", data=best_weights, index=self._mean_returns.index)
         df[f"ENC"] = positions[positions > 1e-5]
@@ -168,11 +174,13 @@ class Frontier:
                 variance += step
                 step /= 10
         
+        assert best_weights is not None, "No optimal solution found"
         # Save the results
         positions = pd.Series(name="Position", data=best_weights, index=self._mean_returns.index)
         df[f"min_variance"] = positions[positions > 1e-5]
             
         return df.fillna(0)
+    
     
     ##################################################################################
     # Plots

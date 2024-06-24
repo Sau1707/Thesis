@@ -21,17 +21,18 @@ VARIANCE = args.variance
 def event(historical_stocks: pd.DataFrame, current_weights: pd.DataFrame):
     """Event that rebalances the portfolio"""
     n = len(historical_stocks.columns)
-    portfolios = ['Random - Update', 'Frontier - Update']
-    df = pd.DataFrame(index=historical_stocks.columns, columns=portfolios)
-    
-    # Generate the random
-    df["Random - Update"] = np.random.dirichlet(np.ones(n))
-    # Generate the efficient frontier
-    frontier = Frontier(historical_stocks, years=YEARS)
-    frontier_weights = frontier.mean_variance_portfolio(0.5)
-    df["Frontier - Update"] = frontier_weights
+    df = pd.DataFrame(index=historical_stocks.columns)
+    print(df)
 
-    return df
+    # Generate the random
+    # df["Random - Update"] = np.random.dirichlet(np.ones(n))
+    # Generate the efficient frontier
+    frontier = Frontier(historical_stocks, years=5)
+    df["Random"] = np.random.dirichlet(np.ones(n))
+    df["Min Variance"] = frontier.mean_variance_portfolio(0.6)
+    df["ENC"] = frontier.mean_ENC_portfolio(20)
+
+    return df.fillna(0)
 
 
 if __name__ == "__main__":
@@ -56,9 +57,10 @@ if __name__ == "__main__":
     # Run the simulation
     stocks = sim.get_stocks(start_date)
     initial_weights = event(stocks, None)
-    bm_returns, portfolio_values = sim.run(initial_weights, start_date=start_date, end_date=end_date)
+    bm_returns, portfolio_values = sim.run(initial_weights, start_date=start_date, end_date=end_date + pd.DateOffset(months=5))
 
     sim.plot(bm_returns, portfolio_values)
     plt.title(f"{YEARS} years, {VARIANCE} variance")
+    plt.show()
     plt.savefig(f"data/simulations/Y{YEARS}-V{VARIANCE}.png", dpi=300)
     
