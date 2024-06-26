@@ -87,7 +87,7 @@ class Frontier:
         df.columns = [f"random_{i}" for i in range(n_portfolios)]
         return df
     
-    def mean_ENC_portfolio(self, N: int, u: float = 0.15, l: float = 0.005, max_returns = 2) -> pd.DataFrame:
+    def mean_ENC_portfolio(self, N: int, u: float = 0.15, l: float = 0.01, max_returns = 2) -> pd.DataFrame:
         """Calculate the efficient frontier of the portfolio"""
         df = pd.DataFrame(index=self._columns)
         print(df)
@@ -134,7 +134,7 @@ class Frontier:
 
         # Print investments (with non-negligible value, i.e. >1e-5)
         positions = pd.Series(name="Position", data=best_weights, index=self._mean_returns.index)
-        df[f"ENC"] = positions[positions > 1e-5]
+        df[f"ENC_{N}"] = positions[positions > 1e-5]
 
         return df.fillna(0)
 
@@ -177,7 +177,7 @@ class Frontier:
         assert best_weights is not None, "No optimal solution found"
         # Save the results
         positions = pd.Series(name="Position", data=best_weights, index=self._mean_returns.index)
-        df[f"min_variance"] = positions[positions > 1e-5]
+        df[f"min_variance_{min_variance}"] = positions[positions > 1e-5]
             
         return df.fillna(0)
     
@@ -254,10 +254,20 @@ if __name__ == "__main__":
     ef = Frontier(stocks)
     
     df = pd.concat([
-        ef.mean_ENC_portfolio(50),
-        ef.mean_variance_portfolio(0.6),
-        ef.random_portfolios(20, use_years=True)
+        # ef.mean_ENC_portfolio(40),
+        # ef.mean_ENC_portfolio(50),
+        ef.mean_ENC_portfolio(60),
+        # ef.mean_variance_portfolio(0.9),
+        # ef.mean_variance_portfolio(0.8),
+        # ef.mean_variance_portfolio(0.7),
+        # ef.mean_variance_portfolio(0.6),
+        ef.mean_variance_portfolio(0.4),
+        # ef.mean_variance_portfolio(0.4),
+        # ef.mean_variance_portfolio(0.3),
+        # ef.mean_variance_portfolio(0.2),
+        # ef.mean_variance_portfolio(0.1),
+        ef.random_portfolios(1_000, use_years=True)
     ], axis=1)
 
     ef.plot_returns(df)
-    # ef.plot(df)
+    ef.plot(df)
